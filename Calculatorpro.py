@@ -1,58 +1,82 @@
 import pygame
 import random
-import math
 
 pygame.init()
 
 # Window
-WIDTH, HEIGHT = 800, 600
+WIDTH, HEIGHT = 900, 500
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Survival Arena")
+pygame.display.set_caption("Mini Mario – Polished UI")
 
 clock = pygame.time.Clock()
-font = pygame.font.SysFont("consolas", 28)
+font = pygame.font.SysFont("consolas", 22)
 
 # Colors
+SKY_TOP = (120, 190, 255)
+SKY_BOTTOM = (180, 225, 255)
+GROUND_GREEN = (90, 200, 120)
+BRICK = (170, 90, 60)
+PLAYER_RED = (220, 60, 60)
+COIN_YELLOW = (255, 215, 0)
 WHITE = (255, 255, 255)
-RED = (220, 50, 50)
-BLUE = (50, 150, 255)
-BLACK = (20, 20, 20)
+BLACK = (30, 30, 30)
 
 # Player
-player_pos = [WIDTH // 2, HEIGHT // 2]
-player_radius = 15
-player_speed = 5
-
-# Enemies
-enemy_radius = 15
-enemy_speed = 2
-enemies = []
-
+player = pygame.Rect(80, 350, 40, 50)
+speed = 5
+jump_power = -16
+gravity = 0.8
+velocity_y = 0
+on_ground = False
+lives = 3
 score = 0
-game_over = False
+
+# Platforms
+platforms = [
+    pygame.Rect(0, 430, 900, 70),
+    pygame.Rect(200, 340, 120, 25),
+    pygame.Rect(400, 280, 120, 25),
+    pygame.Rect(600, 220, 120, 25),
+]
+
+# Coins
+coins = []
+for p in platforms[1:]:
+    coins.append(pygame.Rect(p.centerx - 10, p.y - 25, 20, 20))
+
+# Background clouds
+clouds = [[random.randint(0, WIDTH), random.randint(50, 200)] for _ in range(5)]
+
+win = False
 
 
-def spawn_enemy():
-    x = random.choice([0, WIDTH])
-    y = random.randint(0, HEIGHT)
-    enemies.append([x, y])
+def draw_sky():
+    for y in range(HEIGHT):
+        ratio = y / HEIGHT
+        r = SKY_TOP[0] * (1 - ratio) + SKY_BOTTOM[0] * ratio
+        g = SKY_TOP[1] * (1 - ratio) + SKY_BOTTOM[1] * ratio
+        b = SKY_TOP[2] * (1 - ratio) + SKY_BOTTOM[2] * ratio
+        pygame.draw.line(screen, (int(r), int(g), int(b)), (0, y), (WIDTH, y))
 
 
-def distance(a, b):
-    return math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2)
+def draw_cloud(x, y):
+    pygame.draw.circle(screen, WHITE, (x, y), 20)
+    pygame.draw.circle(screen, WHITE, (x + 20, y + 10), 18)
+    pygame.draw.circle(screen, WHITE, (x - 20, y + 10), 18)
 
 
-def draw_text(text, x, y, color=WHITE):
-    screen.blit(font.render(text, True, color), (x, y))
+def draw_ui():
+    lives_text = font.render(f"❤ Lives: {lives}", True, BLACK)
+    score_text = font.render(f"★ Score: {score}", True, BLACK)
+    screen.blit(lives_text, (20, 15))
+    screen.blit(score_text, (WIDTH - 160, 15))
 
 
-spawn_timer = 0
-
-# Main Loop
 running = True
 while running:
     clock.tick(60)
-    screen.fill(BLACK)
+
+    draw_sky()
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -60,53 +84,66 @@ while running:
 
     keys = pygame.key.get_pressed()
 
-    if not game_over:
-        # Player movement
-        if keys[pygame.K_w]:
-            player_pos[1] -= player_speed
-        if keys[pygame.K_s]:
-            player_pos[1] += player_speed
+    if not win and lives > 0:
+        # Movement
         if keys[pygame.K_a]:
-            player_pos[0] -= player_speed
+            player.x -= speed
         if keys[pygame.K_d]:
-            player_pos[0] += player_speed
+            player.x += speed
 
-        # Keep player inside screen
-        player_pos[0] = max(player_radius, min(WIDTH - player_radius, player_pos[0]))
-        player_pos[1] = max(player_radius, min(HEIGHT - player_radius, player_pos[1]))
+        # Jump
+        if keys[pygame.K_SPACE] and on_ground:
+            velocity_y = jump_power
+            on_ground = False
 
-        # Spawn enemies
-        spawn_timer += 1
-        if spawn_timer > 60:
-            spawn_enemy()
-            spawn_timer = 0
-            score += 1
-            enemy_speed += 0.05
+        # Gravity
+        velocity_y += gravity
+        player.y += velocity_y
 
-        # Move enemies
-        for enemy in enemies:
-            angle = math.atan2(player_pos[1] - enemy[1], player_pos[0] - enemy[0])
-            enemy[0] += math.cos(angle) * enemy_speed
-            enemy[1] += math.sin(angle) * enemy_speed
+        # Platform collision
+        on_ground = False
+        for platform in platforms:
+            if player.colliderect(platform) and velocity_y > 0:
+                player.bottom = platform.top
+                velocity_y = 0
+                on_ground = True
 
-            if distance(player_pos, enemy) < player_radius + enemy_radius:
-                game_over = True
+        # Collect coins
+        for coin in coins[:]:
+            if player.colliderect(coin):
+                coins.remove(coin)
+                score += 10
 
-    # Draw player
-    pygame.draw.circle(screen, BLUE, player_pos, player_radius)
+        if len(coins) == 0:
+            win = True
 
-    # Draw enemies
-    for enemy in enemies:
-        pygame.draw.circle(screen, RED, enemy, enemy_radius)
+        # Screen bounds
+        player.x = max(0, min(WIDTH - player.width, player.x))
 
-    draw_text(f"Score: {score}", 10, 10)
+    # Clouds
+    for cloud in clouds:
+        draw_cloud(cloud[0], cloud[1])
+        cloud[0] -= 0.3
+        if cloud[0] < -60:
+            cloud[0] = WIDTH + 60
 
-    if game_over:
-        draw_text("GAME OVER", WIDTH // 2 - 90, HEIGHT // 2 - 20, RED)
-        draw_text("Press ESC to quit", WIDTH // 2 - 140, HEIGHT // 2 + 20)
+    # Platforms
+    for platform in platforms:
+        pygame.draw.rect(screen, GROUND_GREEN, platform)
+        pygame.draw.rect(screen, BRICK, platform, 3)
 
-        if keys[pygame.K_ESCAPE]:
-            running = False
+    # Coins
+    for coin in coins:
+        pygame.draw.circle(screen, COIN_YELLOW, coin.center, 10)
+
+    # Player
+    pygame.draw.rect(screen, PLAYER_RED, player, border_radius=6)
+
+    draw_ui()
+
+    if win:
+        text = font.render("YOU WIN! 🎉", True, BLACK)
+        screen.blit(text, (WIDTH // 2 - 80, HEIGHT // 2))
 
     pygame.display.flip()
 
